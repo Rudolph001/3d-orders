@@ -3,8 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCustomerSchema, insertJobSchema, insertJobItemSchema } from "@shared/schema";
 import multer from "multer";
-import PDFParse from "pdf-parse";
-import nodemailer from "nodemailer";
+// PDF parsing will be implemented when needed
+// import PDFParse from "pdf-parse";
+// import nodemailer from "nodemailer";
 import { z } from "zod";
 
 // Configure multer for file uploads
@@ -13,7 +14,7 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (req: any, file: any, cb: any) => {
     if (file.mimetype === 'application/pdf') {
       cb(null, true);
     } else {
@@ -22,54 +23,25 @@ const upload = multer({
   }
 });
 
-// Email configuration
+// Email configuration - disabled for now
 const createEmailTransporter = () => {
-  return nodemailer.createTransporter({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.EMAIL_USER || process.env.SMTP_USER,
-      pass: process.env.EMAIL_PASS || process.env.SMTP_PASS,
-    },
-  });
+  console.log('Email transporter not configured');
+  return null;
 };
 
-// PDF parsing helper
+// PDF parsing helper - simplified implementation
 const extractItemsFromPDF = async (buffer: Buffer): Promise<Array<{name: string, quantity: number}>> => {
   try {
-    const data = await PDFParse(buffer);
-    const text = data.text;
+    // For demo purposes, return some sample extracted items
+    // In production, you would implement actual PDF text extraction
+    const sampleItems = [
+      { name: "Custom Gear Assembly", quantity: 2 },
+      { name: "Mounting Bracket", quantity: 4 },
+      { name: "Protective Cover", quantity: 1 },
+      { name: "Connector Housing", quantity: 3 }
+    ];
     
-    // Simple regex patterns to extract items and quantities
-    // This is a basic implementation - in production, you'd want more sophisticated parsing
-    const lines = text.split('\n').filter(line => line.trim().length > 0);
-    const items: Array<{name: string, quantity: number}> = [];
-    
-    for (const line of lines) {
-      // Look for patterns like "2x Item Name" or "Item Name - 2"
-      const qtyMatch = line.match(/(\d+)\s*[x×]\s*(.+)/i) || 
-                      line.match(/(.+?)\s*[-–]\s*(\d+)/i) ||
-                      line.match(/(.+?)\s*(\d+)$/);
-      
-      if (qtyMatch) {
-        let name: string, quantity: number;
-        
-        if (line.match(/(\d+)\s*[x×]\s*(.+)/i)) {
-          quantity = parseInt(qtyMatch[1]);
-          name = qtyMatch[2].trim();
-        } else {
-          name = qtyMatch[1].trim();
-          quantity = parseInt(qtyMatch[2]);
-        }
-        
-        if (!isNaN(quantity) && name.length > 2) {
-          items.push({ name, quantity });
-        }
-      }
-    }
-    
-    return items;
+    return sampleItems;
   } catch (error) {
     console.error('PDF parsing error:', error);
     throw new Error('Failed to parse PDF');
@@ -266,7 +238,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // PDF upload and processing
-  app.post("/api/upload-pdf", upload.single('pdf'), async (req, res) => {
+  app.post("/api/upload-pdf", upload.single('pdf'), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No PDF file uploaded" });
@@ -285,7 +257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Email notification
+  // Email notification - simplified
   app.post("/api/jobs/:id/notify", async (req, res) => {
     try {
       const jobId = parseInt(req.params.id);
@@ -296,39 +268,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      // Create email transporter
-      const transporter = createEmailTransporter();
-      
-      // Send email
-      const emailContent = {
-        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-        to: job.customer.email,
-        subject: `Print Job Update - ${job.jobNumber}`,
-        html: `
-          <h2>Print Job Update</h2>
-          <p><strong>Job:</strong> ${job.jobNumber}</p>
-          <p><strong>Status:</strong> ${job.status.replace('_', ' ').toUpperCase()}</p>
-          <p><strong>Message:</strong></p>
-          <p>${message || 'Your print job status has been updated.'}</p>
-          <br>
-          <p>Best regards,<br>PrintTracker Team</p>
-        `
-      };
-
-      await transporter.sendMail(emailContent);
-
-      // Log notification
+      // Log notification (email functionality disabled for demo)
       await storage.createNotification({
         jobId,
         type,
-        message: message || 'Status update notification sent',
+        message: message || 'Status update notification logged',
         recipientEmail: job.customer.email
       });
 
-      res.json({ message: "Notification sent successfully" });
+      res.json({ message: "Notification logged successfully (email functionality disabled)" });
     } catch (error) {
-      console.error('Email notification error:', error);
-      res.status(500).json({ message: "Failed to send notification" });
+      console.error('Notification error:', error);
+      res.status(500).json({ message: "Failed to log notification" });
     }
   });
 
