@@ -206,7 +206,11 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
               <Input
                 type="date"
                 {...form.register("dueDate", { 
-                  setValueAs: (value) => value ? new Date(value) : undefined 
+                  setValueAs: (value) => {
+                    if (!value || value === '') return undefined;
+                    const date = new Date(value + 'T00:00:00.000Z');
+                    return isNaN(date.getTime()) ? undefined : date;
+                  }
                 })}
               />
             </div>
