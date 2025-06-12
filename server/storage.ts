@@ -22,6 +22,7 @@ export interface IStorage {
   getAllCustomers(): Promise<Customer[]>;
   createCustomer(customer: InsertCustomer): Promise<Customer>;
   updateCustomer(id: number, customer: Partial<InsertCustomer>): Promise<Customer | undefined>;
+  deleteCustomer(id: number): Promise<boolean>;
 
   // Jobs
   getJob(id: number): Promise<Job | undefined>;
@@ -30,6 +31,7 @@ export interface IStorage {
   getJobsByStatus(status: string): Promise<JobWithCustomer[]>;
   createJob(job: InsertJob): Promise<Job>;
   updateJob(id: number, job: Partial<InsertJob>): Promise<Job | undefined>;
+  deleteJob(id: number): Promise<boolean>;
   generateJobNumber(): string;
 
   // Job Items
@@ -136,6 +138,11 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
+  async deleteCustomer(id: number): Promise<boolean> {
+    // Delete the customer
+    return this.customers.delete(id);
+  }
+
   // Job methods
   async getJob(id: number): Promise<Job | undefined> {
     return this.jobs.get(id);
@@ -159,7 +166,7 @@ export class MemStorage implements IStorage {
 
   async getAllJobs(): Promise<JobWithCustomer[]> {
     const jobsWithDetails: JobWithCustomer[] = [];
-    
+
     for (const job of Array.from(this.jobs.values())) {
       const customer = this.customers.get(job.customerId);
       if (customer) {
@@ -208,16 +215,22 @@ export class MemStorage implements IStorage {
     const existing = this.jobs.get(id);
     if (!existing) return undefined;
 
-    const updated: Job = { ...existing, ...jobUpdate };
-    
-    // Set completion time if status changed to completed
-    if (jobUpdate.status === 'completed' && existing.status !== 'completed') {
-      updated.completedAt = new Date();
-      updated.progress = 100;
-    }
-
+    const updated: Job = { 
+      ...existing, 
+      ...jobUpdate,
+      completedAt: jobUpdate.status === 'completed' ? new Date() : existing.completedAt
+    };
     this.jobs.set(id, updated);
     return updated;
+  }
+
+  async deleteJob(id: number): Promise<boolean> {
+    // Delete associated job items first
+    const jobItems = Array.from(this.jobItems.values()).filter(item => item.jobId === id);
+    jobItems.forEach(item => this.jobItems.delete(item.id));
+
+    // Delete the job
+    return this.jobs.delete(id);
   }
 
   // Job Item methods
@@ -235,10 +248,10 @@ export class MemStorage implements IStorage {
       material: insertItem.material ?? null
     };
     this.jobItems.set(id, item);
-    
+
     // Update job total estimated time
     await this.updateJobTotalTime(insertItem.jobId);
-    
+
     return item;
   }
 
@@ -248,10 +261,10 @@ export class MemStorage implements IStorage {
 
     const updated: JobItem = { ...existing, ...itemUpdate };
     this.jobItems.set(id, updated);
-    
+
     // Update job total estimated time
     await this.updateJobTotalTime(existing.jobId);
-    
+
     return updated;
   }
 
@@ -260,10 +273,10 @@ export class MemStorage implements IStorage {
     if (!item) return false;
 
     this.jobItems.delete(id);
-    
+
     // Update job total estimated time
     await this.updateJobTotalTime(item.jobId);
-    
+
     return true;
   }
 

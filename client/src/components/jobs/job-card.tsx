@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Edit, Mail, Play, Pause, Check, Eye, File, Archive } from "lucide-react";
+import { Edit, Mail, Play, Pause, Check, Eye, File, Archive, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,7 @@ export default function JobCard({ job }: JobCardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [notificationMessage, setNotificationMessage] = useState("");
+  const [editingJob, setEditingJob] = useState(false);
 
   const updateJobMutation = useMutation({
     mutationFn: (data: { status?: string; progress?: number }) =>
@@ -44,6 +45,19 @@ export default function JobCard({ job }: JobCardProps) {
     },
   });
 
+  const deleteJobMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("DELETE", `/api/jobs/${job.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      toast({ title: "Job deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete job", variant: "destructive" });
+    },
+  });
+
   const handleStatusChange = (newStatus: string, progress?: number) => {
     updateJobMutation.mutate({ status: newStatus, progress });
   };
@@ -51,6 +65,12 @@ export default function JobCard({ job }: JobCardProps) {
   const handleNotifyCustomer = () => {
     const message = notificationMessage || `Your print job ${job.jobNumber} status has been updated to ${job.status.replace('_', ' ')}.`;
     notifyCustomerMutation.mutate(message);
+  };
+
+  const handleDeleteJob = () => {
+    if (confirm(`Are you sure you want to delete job ${job.jobNumber}?`)) {
+      deleteJobMutation.mutate();
+    }
   };
 
   const getActionButtons = () => {
@@ -145,8 +165,11 @@ export default function JobCard({ job }: JobCardProps) {
             </p>
           </div>
           <div className="flex items-center space-x-2">
-            <Button size="sm" variant="ghost">
+            <Button size="sm" variant="ghost" onClick={() => setEditingJob(true)}>
               <Edit className="w-4 h-4" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleDeleteJob}>
+              <Trash2 className="w-4 h-4" />
             </Button>
             <Button size="sm" variant="ghost" onClick={handleNotifyCustomer}>
               <Mail className="w-4 h-4" />

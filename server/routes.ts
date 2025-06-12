@@ -86,6 +86,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/customers/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteCustomer(id);
+      if (!success) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete customer" });
+    }
+  });
+
   // Job routes
   app.get("/api/jobs", async (req, res) => {
     try {
@@ -158,6 +171,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res.status(500).json({ message: "Failed to update job" });
       }
+    }
+  });
+
+  app.delete("/api/jobs/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteJob(id);
+      if (!success) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete job" });
     }
   });
 

@@ -45,7 +45,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
   const form = useForm<JobFormData>({
     resolver: zodResolver(jobFormSchema),
     defaultValues: {
-      customerId: 0, // Will be set when customer is selected
+      customerId: undefined,
       priority: "normal",
       status: "not_started",
       items: [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }],
@@ -54,12 +54,25 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
 
   const createJobMutation = useMutation({
     mutationFn: (data: JobFormData) => {
+      if (!data.customerId) {
+        throw new Error("Please select a customer");
+      }
+      
       const items = data.items.map(item => ({
         ...item,
         estimatedTimePerItem: parseTimeString(item.estimatedTimePerItem || "0"),
       }));
       
-      return apiRequest("POST", "/api/jobs", { ...data, items });
+      const jobData = {
+        customerId: data.customerId,
+        priority: data.priority,
+        status: data.status,
+        dueDate: data.dueDate,
+        notes: data.notes,
+        items
+      };
+      
+      return apiRequest("POST", "/api/jobs", jobData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -68,12 +81,17 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
       onOpenChange(false);
       form.reset();
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error("Job creation error:", error);
       toast({ title: "Failed to create job", variant: "destructive" });
     },
   });
 
   const onSubmit = (data: JobFormData) => {
+    if (!data.customerId) {
+      toast({ title: "Please select a customer", variant: "destructive" });
+      return;
+    }
     createJobMutation.mutate(data);
   };
 

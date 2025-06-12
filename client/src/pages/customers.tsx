@@ -1,21 +1,37 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Header from "@/components/layout/header";
 import CustomerForm from "@/components/customers/customer-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Users, Mail, Phone, Building, Edit } from "lucide-react";
+import { Users, Mail, Phone, Building, Edit, Trash2 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Customer } from "@shared/schema";
 
 export default function Customers() {
   const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
+  });
+
+  const deleteCustomerMutation = useMutation({
+    mutationFn: (customerId: number) =>
+      apiRequest("DELETE", `/api/customers/${customerId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      toast({ title: "Customer deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete customer", variant: "destructive" });
+    },
   });
 
   const filteredCustomers = customers.filter(customer => {
@@ -34,6 +50,12 @@ export default function Customers() {
 
   const handleEditCustomerSuccess = () => {
     setEditingCustomer(null);
+  };
+
+  const handleDeleteCustomer = (customerId: number) => {
+    if (confirm("Are you sure you want to delete this customer?")) {
+      deleteCustomerMutation.mutate(customerId);
+    }
   };
 
   return (
@@ -88,6 +110,13 @@ export default function Customers() {
                       onClick={() => setEditingCustomer(customer)}
                     >
                       <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDeleteCustomer(customer.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </CardHeader>
