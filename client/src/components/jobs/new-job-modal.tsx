@@ -45,7 +45,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
   const form = useForm<JobFormData>({
     resolver: zodResolver(jobFormSchema),
     defaultValues: {
-      customerId: 1,
+      customerId: 0, // Will be set when customer is selected
       priority: "normal",
       status: "not_started",
       items: [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }],
@@ -99,8 +99,11 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* Customer Selection */}
           <div>
-            <Label htmlFor="customerId">Customer</Label>
-            <Select onValueChange={(value) => form.setValue("customerId", parseInt(value))}>
+            <Label htmlFor="customerId">Customer *</Label>
+            <Select 
+              onValueChange={(value) => form.setValue("customerId", parseInt(value))}
+              required
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select a customer..." />
               </SelectTrigger>

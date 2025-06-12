@@ -1,408 +1,359 @@
-
 import React, { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Header from "@/components/layout/header";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { BarChart3, TrendingUp, Clock, Users, Calendar, FileText, Mail, Send, AlertCircle, CheckCircle } from "lucide-react";
-import { formatTime } from "@/lib/utils";
-import { apiRequest } from "@/lib/queryClient";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar, Clock, User, Package, AlertCircle, CheckCircle, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { formatTime } from "@/lib/utils";
 import StatusBadge from "@/components/jobs/status-badge";
-import type { JobWithCustomer, JobStats } from "@shared/schema";
+import type { JobWithCustomer } from "@shared/schema";
 
 export default function Reports() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedJob, setSelectedJob] = useState<JobWithCustomer | null>(null);
   const [updateMessage, setUpdateMessage] = useState("");
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
 
-  const { data: jobs = [] } = useQuery<JobWithCustomer[]>({
+  const { data: jobs = [], isLoading } = useQuery<JobWithCustomer[]>({
     queryKey: ["/api/jobs"],
   });
 
-  const { data: stats } = useQuery<JobStats>({
-    queryKey: ["/api/stats"],
+  const updateJobMutation = useMutation({
+    mutationFn: (data: { jobId: number; progress?: number; status?: string; estimatedCompletion?: string }) =>
+      apiRequest("PUT", `/api/jobs/${data.jobId}`, {
+        progress: data.progress,
+        status: data.status,
+        notes: data.estimatedCompletion ? `${selectedJob?.notes ? selectedJob.notes + '\n' : ''}Estimated Completion: ${data.estimatedCompletion}` : selectedJob?.notes
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: "Job updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update job", variant: "destructive" });
+    },
   });
 
   const notifyCustomerMutation = useMutation({
-    mutationFn: (data: { jobId: number; message: string }) =>
-      apiRequest("POST", `/api/jobs/${data.jobId}/notify`, { message: data.message }),
+    mutationFn: (message: string) =>
+      apiRequest("POST", `/api/jobs/${selectedJob?.id}/notify`, { message }),
     onSuccess: () => {
       toast({ title: "Customer notification sent successfully" });
       setUpdateMessage("");
-      setEstimatedCompletion("");
-      setSelectedJob(null);
     },
     onError: () => {
-      toast({ title: "Failed to send customer notification", variant: "destructive" });
+      toast({ title: "Failed to send notification", variant: "destructive" });
     },
   });
 
-  // Calculate additional metrics
-  const completedJobs = jobs.filter(job => job.status === 'completed');
-  const activeJobs = jobs.filter(job => job.status === 'printing' || job.status === 'paused');
-  const pendingJobs = jobs.filter(job => job.status === 'not_started');
-  
-  const averageCompletionTime = completedJobs.length > 0 
-    ? Math.round(completedJobs.reduce((sum, job) => sum + (job.actualTime || job.totalEstimatedTime || 0), 0) / completedJobs.length)
-    : 0;
-
-  const topCustomers = jobs.reduce((acc, job) => {
-    const customer = job.customer.name;
-    acc[customer] = (acc[customer] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const sortedCustomers = Object.entries(topCustomers)
-    .sort(([,a], [,b]) => b - a)
-    .slice(0, 5);
-
-  const recentCompletions = completedJobs
-    .filter(job => job.completedAt)
-    .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())
-    .slice(0, 5);
+  const calculateProgress = (job: JobWithCustomer) => {
+    switch (job.status) {
+      case "not_started": return 0;
+      case "printing": return job.progress || 25;
+      case "paused": return job.progress || 25;
+      case "completed": return 100;
+      default: return 0;
+    }
+  };
 
   const getEstimatedCompletionDate = (job: JobWithCustomer) => {
-    if (job.status === 'completed') return 'Completed';
-    
-    const remainingTime = job.totalEstimatedTime ? 
-      Math.round((job.totalEstimatedTime * (100 - (job.progress || 0))) / 100) : 0;
-    
-    if (remainingTime === 0) return 'Soon';
-    
+    if (job.status === "completed") return "Completed";
+
+    const totalTime = job.totalEstimatedTime || 0;
+    const currentProgress = calculateProgress(job);
+    const remainingTime = totalTime * (1 - currentProgress / 100);
+
+    if (remainingTime <= 0) return "Soon";
+
     const completionDate = new Date();
     completionDate.setMinutes(completionDate.getMinutes() + remainingTime);
-    
-    return completionDate.toLocaleDateString() + ' at ' + completionDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return completionDate.toLocaleDateString() + " " + completionDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const handleSendUpdate = () => {
-    if (!selectedJob) return;
-    
-    const completionInfo = estimatedCompletion || getEstimatedCompletionDate(selectedJob);
-    const message = updateMessage || 
-      `Update on your print job #${selectedJob.jobNumber}: Current status is ${selectedJob.status.replace('_', ' ')}. ${selectedJob.progress ? `Progress: ${selectedJob.progress}%` : ''} Expected completion: ${completionInfo}`;
-    
-    notifyCustomerMutation.mutate({ jobId: selectedJob.id, message });
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "not_started": return "bg-gray-100 text-gray-800";
+      case "printing": return "bg-blue-100 text-blue-800";
+      case "paused": return "bg-yellow-100 text-yellow-800";
+      case "completed": return "bg-green-100 text-green-800";
+      default: return "bg-gray-100 text-gray-800";
+    }
   };
+
+  const handleProgressUpdate = (jobId: number, newProgress: number) => {
+    updateJobMutation.mutate({ jobId, progress: newProgress });
+  };
+
+  const handleStatusUpdate = (jobId: number, newStatus: string) => {
+    updateJobMutation.mutate({ jobId, status: newStatus });
+  };
+
+  const handleCompletionEstimate = (jobId: number) => {
+    updateJobMutation.mutate({ jobId, estimatedCompletion });
+    setEstimatedCompletion("");
+  };
+
+  const sendCustomerUpdate = () => {
+    if (!selectedJob) return;
+
+    const progress = calculateProgress(selectedJob);
+    const estimatedCompletion = getEstimatedCompletionDate(selectedJob);
+
+    const defaultMessage = `Hello! Here's an update on your print job ${selectedJob.jobNumber}:
+
+Status: ${selectedJob.status.replace('_', ' ').toUpperCase()}
+Progress: ${progress}% complete
+Estimated Completion: ${estimatedCompletion}
+
+${selectedJob.items.map(item => 
+  `• ${item.name} (Qty: ${item.quantity})${item.material ? ` - ${item.material}` : ''}`
+).join('\n')}
+
+${updateMessage ? '\nAdditional notes: ' + updateMessage : ''}
+
+Thank you for your business!`;
+
+    notifyCustomerMutation.mutate(defaultMessage);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <Header
-        title="Reports & Customer Updates"
-        subtitle="Analytics, insights and customer communication for your 3D printing business"
-      />
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold text-slate-900">Job Reports & Customer Updates</h1>
+      </div>
 
-      <main className="flex-1 overflow-auto p-6">
-        <div className="max-w-7xl mx-auto space-y-8">
-          {/* Overview Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Jobs List */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-800">Active Jobs</h2>
+
+          {jobs.length === 0 ? (
             <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-600">Total Jobs</p>
-                    <p className="text-3xl font-bold text-slate-900 mt-2">{jobs.length}</p>
+              <CardContent className="flex items-center justify-center h-32">
+                <p className="text-slate-500">No jobs found</p>
+              </CardContent>
+            </Card>
+          ) : (
+            jobs.map((job) => (
+              <Card 
+                key={job.id} 
+                className={`cursor-pointer transition-all hover:shadow-md ${
+                  selectedJob?.id === job.id ? 'ring-2 ring-blue-500' : ''
+                }`}
+                onClick={() => setSelectedJob(job)}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">{job.jobNumber}</CardTitle>
+                    <Badge className={getStatusColor(job.status)}>
+                      {job.status.replace('_', ' ')}
+                    </Badge>
                   </div>
-                  <FileText className="w-8 h-8 text-slate-400" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-600">Active Jobs</p>
-                    <p className="text-3xl font-bold text-slate-900 mt-2">{activeJobs.length}</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <User className="w-4 h-4" />
+                    <span>{job.customer.name}</span>
                   </div>
-                  <TrendingUp className="w-8 h-8 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-600">Completed Today</p>
-                    <p className="text-3xl font-bold text-slate-900 mt-2">{stats?.completedToday || 0}</p>
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Package className="w-4 h-4" />
+                    <span>{job.items.length} item(s)</span>
                   </div>
-                  <CheckCircle className="w-8 h-8 text-success" />
-                </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-600">Queue Length</p>
-                    <p className="text-3xl font-bold text-slate-900 mt-2">{pendingJobs.length}</p>
-                  </div>
-                  <Clock className="w-8 h-8 text-warning" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Active Jobs with Progress */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <TrendingUp className="w-5 h-5" />
-                  <span>Active Jobs Progress</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {activeJobs.length === 0 ? (
-                    <p className="text-sm text-slate-500 text-center py-4">No active jobs</p>
-                  ) : (
-                    activeJobs.map((job) => (
-                      <div key={job.id} className="p-4 bg-slate-50 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center space-x-3">
-                            <span className="font-medium">Job #{job.jobNumber}</span>
-                            <StatusBadge status={job.status} />
-                          </div>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setSelectedJob(job)}
-                              >
-                                <Mail className="w-4 h-4 mr-1" />
-                                Update Customer
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-md">
-                              <DialogHeader>
-                                <DialogTitle>Send Customer Update</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div>
-                                  <p className="text-sm font-medium text-slate-700">Job: #{selectedJob?.jobNumber}</p>
-                                  <p className="text-sm text-slate-600">Customer: {selectedJob?.customer.name}</p>
-                                  <p className="text-sm text-slate-600">Email: {selectedJob?.customer.email}</p>
-                                </div>
-                                <div>
-                                  <label className="text-sm font-medium text-slate-700">Custom Message (optional)</label>
-                                  <Textarea
-                                    value={updateMessage}
-                                    onChange={(e) => setUpdateMessage(e.target.value)}
-                                    placeholder="Add a custom message for the customer..."
-                                    className="mt-1"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-sm font-medium text-slate-700">Estimated Completion (optional)</label>
-                                  <Input
-                                    value={estimatedCompletion}
-                                    onChange={(e) => setEstimatedCompletion(e.target.value)}
-                                    placeholder="e.g., Tomorrow at 2 PM, or Jan 15th"
-                                    className="mt-1"
-                                  />
-                                  <p className="text-xs text-slate-500 mt-1">
-                                    Auto-calculated: {selectedJob ? getEstimatedCompletionDate(selectedJob) : ''}
-                                  </p>
-                                </div>
-                                <Button
-                                  onClick={handleSendUpdate}
-                                  disabled={notifyCustomerMutation.isPending}
-                                  className="w-full"
-                                >
-                                  <Send className="w-4 h-4 mr-2" />
-                                  Send Update
-                                </Button>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                        <p className="text-sm text-slate-600 mb-2">{job.customer.name}</p>
-                        <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
-                          <span>Progress: {job.progress || 0}%</span>
-                          <span>Est. completion: {getEstimatedCompletionDate(job)}</span>
-                        </div>
-                        <div className="w-full bg-slate-200 rounded-full h-2">
-                          <div
-                            className="bg-primary h-2 rounded-full transition-all"
-                            style={{ width: `${job.progress || 0}%` }}
-                          />
-                        </div>
-                        <p className="text-xs text-slate-500 mt-2">
-                          {job.items.length} items • {formatTime(job.totalEstimatedTime || 0)} total
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Job Status Breakdown */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <BarChart3 className="w-5 h-5" />
-                  <span>Job Status Breakdown</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { status: 'completed', label: 'Completed', count: completedJobs.length, color: 'success' },
-                    { status: 'printing', label: 'Printing', count: jobs.filter(j => j.status === 'printing').length, color: 'primary' },
-                    { status: 'not_started', label: 'Not Started', count: pendingJobs.length, color: 'slate' },
-                    { status: 'paused', label: 'Paused', count: jobs.filter(j => j.status === 'paused').length, color: 'warning' },
-                  ].map(({ status, label, count, color }) => (
-                    <div key={status} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <Badge variant="outline" className={`
-                          ${color === 'success' ? 'bg-success/10 text-success border-success/20' : ''}
-                          ${color === 'primary' ? 'bg-primary/10 text-primary border-primary/20' : ''}
-                          ${color === 'slate' ? 'bg-slate-100 text-slate-600 border-slate-200' : ''}
-                          ${color === 'warning' ? 'bg-warning/10 text-warning border-warning/20' : ''}
-                        `}>
-                          {label}
-                        </Badge>
-                        <span className="text-sm text-slate-600">{count} jobs</span>
-                      </div>
-                      <div className="text-sm font-medium">
-                        {jobs.length > 0 ? Math.round((count / jobs.length) * 100) : 0}%
-                      </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span>Progress</span>
+                      <span>{calculateProgress(job)}%</span>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Pending Jobs Queue */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <AlertCircle className="w-5 h-5" />
-                  <span>Pending Jobs Queue</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {pendingJobs.length === 0 ? (
-                  <p className="text-sm text-slate-500 text-center py-8">No pending jobs</p>
-                ) : (
-                  <div className="space-y-3">
-                    {pendingJobs.slice(0, 5).map((job, index) => (
-                      <div key={job.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-1">
-                            <span className="text-sm font-medium">#{index + 1}</span>
-                            <span className="font-medium">Job #{job.jobNumber}</span>
-                          </div>
-                          <p className="text-sm text-slate-600">{job.customer.name}</p>
-                          <p className="text-sm text-slate-500">
-                            {job.items.length} items • Est. {formatTime(job.totalEstimatedTime || 0)}
-                          </p>
-                        </div>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setSelectedJob(job)}
-                            >
-                              <Mail className="w-4 h-4" />
-                            </Button>
-                          </DialogTrigger>
-                        </Dialog>
-                      </div>
-                    ))}
-                    {pendingJobs.length > 5 && (
-                      <p className="text-sm text-slate-500 text-center">
-                        +{pendingJobs.length - 5} more jobs in queue
-                      </p>
-                    )}
+                    <Progress value={calculateProgress(job)} className="h-2" />
                   </div>
-                )}
-              </CardContent>
-            </Card>
 
-            {/* Top Customers */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Users className="w-5 h-5" />
-                  <span>Top Customers</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {sortedCustomers.length === 0 ? (
-                    <p className="text-sm text-slate-500 text-center py-4">No customer data available</p>
-                  ) : (
-                    sortedCustomers.map(([customer, count]) => (
-                      <div key={customer} className="flex items-center justify-between">
-                        <span className="font-medium text-slate-900">{customer}</span>
-                        <Badge variant="outline">{count} jobs</Badge>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Clock className="w-4 h-4" />
+                    <span>Est. Completion: {getEstimatedCompletionDate(job)}</span>
+                  </div>
 
-          {/* Recent Completions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Calendar className="w-5 h-5" />
-                <span>Recent Completions</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {recentCompletions.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-8">No completed jobs yet</p>
-              ) : (
-                <div className="space-y-4">
-                  {recentCompletions.map((job) => (
-                    <div key={job.id} className="flex items-center justify-between p-4 bg-success/5 border border-success/20 rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-1">
-                          <span className="font-medium">Job #{job.jobNumber}</span>
-                          <Badge variant="outline" className="bg-success/10 text-success border-success/20">
-                            Completed
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-slate-600">{job.customer.name}</p>
-                        <p className="text-sm text-slate-500">
-                          {job.items.length} items • {formatTime(job.totalEstimatedTime || 0)}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-slate-900">
-                          {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'N/A'}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {job.completedAt ? new Date(job.completedAt).toLocaleTimeString() : ''}
-                        </p>
-                      </div>
+                  {job.dueDate && (
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <Calendar className="w-4 h-4" />
+                      <span>Due: {new Date(job.dueDate).toLocaleDateString()}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
-      </main>
-    </>
+
+        {/* Job Details & Customer Update Panel */}
+        <div className="space-y-4">
+          {selectedJob ? (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-5 h-5" />
+                    Job Details - {selectedJob.jobNumber}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-slate-600">Customer</Label>
+                      <p className="text-slate-900">{selectedJob.customer.name}</p>
+                      <p className="text-sm text-slate-500">{selectedJob.customer.email}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-slate-600">Status</Label>
+                      <div className="mt-1">
+                        <Select
+                          value={selectedJob.status}
+                          onValueChange={(value) => handleStatusUpdate(selectedJob.id, value)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="not_started">Not Started</SelectItem>
+                            <SelectItem value="printing">Printing</SelectItem>
+                            <SelectItem value="paused">Paused</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-slate-600">Progress</Label>
+                    <div className="mt-2 space-y-2">
+                      <Progress value={calculateProgress(selectedJob)} className="h-3" />
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={calculateProgress(selectedJob)}
+                        onChange={(e) => handleProgressUpdate(selectedJob.id, parseInt(e.target.value) || 0)}
+                        className="w-20"
+                        placeholder="0-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-slate-600">Items</Label>
+                    <div className="mt-2 space-y-2">
+                      {selectedJob.items.map((item, index) => (
+                        <div key={index} className="p-3 bg-slate-50 rounded-lg">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium">{item.name}</p>
+                              <p className="text-sm text-slate-600">Quantity: {item.quantity}</p>
+                              {item.material && (
+                                <p className="text-sm text-slate-600">Material: {item.material}</p>
+                              )}
+                              {item.estimatedTimePerItem && (
+                                <p className="text-sm text-slate-600">
+                                  Est. Time: {formatTime(item.estimatedTimePerItem)} per item
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-slate-600">Update Completion Estimate</Label>
+                    <div className="mt-2 flex gap-2">
+                      <Input
+                        type="datetime-local"
+                        value={estimatedCompletion}
+                        onChange={(e) => setEstimatedCompletion(e.target.value)}
+                        className="flex-1"
+                      />
+                      <Button
+                        onClick={() => handleCompletionEstimate(selectedJob.id)}
+                        disabled={!estimatedCompletion}
+                        size="sm"
+                      >
+                        Update
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="w-5 h-5" />
+                    Send Customer Update
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="update-message">Additional Message (Optional)</Label>
+                    <Textarea
+                      id="update-message"
+                      placeholder="Add any specific notes or updates for the customer..."
+                      value={updateMessage}
+                      onChange={(e) => setUpdateMessage(e.target.value)}
+                      className="mt-2"
+                    />
+                  </div>
+
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <h4 className="font-medium text-blue-900 mb-2">Preview of customer notification:</h4>
+                    <div className="text-sm text-blue-800 whitespace-pre-line">
+                      {`Status: ${selectedJob.status.replace('_', ' ').toUpperCase()}
+Progress: ${calculateProgress(selectedJob)}% complete
+Estimated Completion: ${getEstimatedCompletionDate(selectedJob)}`}
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={sendCustomerUpdate}
+                    disabled={notifyCustomerMutation.isPending}
+                    className="w-full"
+                  >
+                    {notifyCustomerMutation.isPending ? "Sending..." : "Send Customer Update"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                  <p className="text-slate-500">Select a job to view details and send customer updates</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
