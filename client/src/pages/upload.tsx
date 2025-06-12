@@ -16,9 +16,11 @@ export default function Upload() {
   const [, setLocation] = useLocation();
   const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([]);
   const [newJobModalOpen, setNewJobModalOpen] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState<string | null>(null); // Add state for invoice number
 
-  const handleItemsExtracted = (items: ExtractedItem[]) => {
+  const handleItemsExtracted = (items: ExtractedItem[], invoiceNumber: string | null) => {
     setExtractedItems(items);
+    setInvoiceNumber(invoiceNumber); // Set invoice number
   };
 
   const handleCreateJobFromPDF = () => {
@@ -125,7 +127,18 @@ export default function Upload() {
         </div>
       </main>
 
-      <NewJobModal open={newJobModalOpen} onOpenChange={setNewJobModalOpen} />
+      <NewJobModal 
+        open={newJobModalOpen} 
+        onOpenChange={setNewJobModalOpen}
+        importedItems={extractedItems.length > 0 ? extractedItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          estimatedTimePerItem: "",
+          material: "",
+          notes: ""
+        })) : undefined}
+        invoiceNumber={invoiceNumber}
+      />
     </>
   );
 }

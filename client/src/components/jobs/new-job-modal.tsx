@@ -19,6 +19,7 @@ import type { Customer } from "@shared/schema";
 
 const jobFormSchema = insertJobSchema.extend({
   customerId: z.number().min(1, "Please select a customer"),
+  invoiceNumber: z.string().optional(),
   items: z.array(z.object({
     name: z.string().min(1, "Item name is required"),
     quantity: z.number().min(1, "Quantity must be at least 1"),
@@ -33,9 +34,17 @@ type JobFormData = z.infer<typeof jobFormSchema>;
 interface NewJobModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  importedItems?: Array<{
+    name: string;
+    quantity: number;
+    estimatedTimePerItem?: string;
+    material?: string;
+    notes?: string;
+  }>;
+  invoiceNumber?: string;
 }
 
-export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
+export default function NewJobModal({ open, onOpenChange, importedItems, invoiceNumber }: NewJobModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -50,17 +59,23 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
       priority: "normal",
       status: "not_started",
       notes: "",
+      invoiceNumber: "",
       items: [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }],
     },
   });
 
   const resetForm = () => {
+    const defaultItems = importedItems && importedItems.length > 0 
+      ? importedItems 
+      : [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }];
+    
     form.reset({
       customerId: 0,
       priority: "normal",
       status: "not_started",
       notes: "",
-      items: [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }],
+      invoiceNumber: invoiceNumber || "",
+      items: defaultItems,
     });
   };
 
@@ -91,6 +106,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
         status: data.status || "not_started",
         dueDate: data.dueDate || undefined,
         notes: data.notes?.trim() || "",
+        invoiceNumber: data.invoiceNumber?.trim() || "",
         items
       };
 
@@ -151,7 +167,14 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create New Job</DialogTitle>
+          <DialogTitle>
+            {importedItems ? "Create Job from Invoice" : "Create New Job"}
+          </DialogTitle>
+          {importedItems && (
+            <p className="text-sm text-slate-600">
+              {importedItems.length} items imported from invoice
+            </p>
+          )}
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -182,6 +205,17 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
               <p className="text-sm text-destructive mt-1">{form.formState.errors.customerId.message}</p>
             )}
           </div>
+
+          {/* Invoice Number */}
+          {(invoiceNumber || importedItems) && (
+            <div>
+              <Label htmlFor="invoiceNumber">Invoice Number</Label>
+              <Input
+                placeholder="Invoice reference number"
+                {...form.register("invoiceNumber")}
+              />
+            </div>
+          )}
 
           {/* Job Details */}
           <div className="grid grid-cols-2 gap-4">
