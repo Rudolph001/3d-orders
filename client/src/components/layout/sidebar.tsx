@@ -6,7 +6,7 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: BarChart3 },
   { name: "Print Jobs", href: "/jobs", icon: FileText },
   { name: "Customers", href: "/customers", icon: Users },
-  { name: "Upload Invoice", href: "/upload", icon: Upload },
+
   { name: "Reports", href: "/reports", icon: FileBarChart },
 ];
 

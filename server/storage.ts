@@ -160,7 +160,7 @@ export class MemStorage implements IStorage {
   async getAllJobs(): Promise<JobWithCustomer[]> {
     const jobsWithDetails: JobWithCustomer[] = [];
     
-    for (const job of this.jobs.values()) {
+    for (const job of Array.from(this.jobs.values())) {
       const customer = this.customers.get(job.customerId);
       if (customer) {
         const items = Array.from(this.jobItems.values()).filter(item => item.jobId === job.id);
@@ -227,7 +227,13 @@ export class MemStorage implements IStorage {
 
   async createJobItem(insertItem: InsertJobItem): Promise<JobItem> {
     const id = this.currentJobItemId++;
-    const item: JobItem = { ...insertItem, id };
+    const item: JobItem = { 
+      ...insertItem, 
+      id,
+      notes: insertItem.notes ?? null,
+      estimatedTimePerItem: insertItem.estimatedTimePerItem ?? null,
+      material: insertItem.material ?? null
+    };
     this.jobItems.set(id, item);
     
     // Update job total estimated time
@@ -285,7 +291,11 @@ export class MemStorage implements IStorage {
   async getJobNotifications(jobId: number): Promise<Notification[]> {
     return Array.from(this.notifications.values())
       .filter(notification => notification.jobId === jobId)
-      .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+      .sort((a, b) => {
+        const dateA = a.sentAt ? new Date(a.sentAt).getTime() : 0;
+        const dateB = b.sentAt ? new Date(b.sentAt).getTime() : 0;
+        return dateB - dateA;
+      });
   }
 
   // Stats methods
