@@ -53,6 +53,10 @@ export const insertJobSchema = createInsertSchema(jobs).omit({
   jobNumber: true,
   createdAt: true,
   completedAt: true,
+}).extend({
+  customerId: z.number(),
+  priority: z.string().default("normal"),
+  status: z.string().default("not_started"),
 });
 
 export const insertJobItemSchema = createInsertSchema(jobItems).omit({

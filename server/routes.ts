@@ -2,26 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCustomerSchema, insertJobSchema, insertJobItemSchema } from "@shared/schema";
-import multer from "multer";
-// PDF parsing will be implemented when needed
-// import PDFParse from "pdf-parse";
-// import nodemailer from "nodemailer";
 import { z } from "zod";
-
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-  },
-  fileFilter: (req: any, file: any, cb: any) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF files are allowed'));
-    }
-  }
-});
 
 // Email configuration - disabled for now
 const createEmailTransporter = () => {
@@ -237,25 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // PDF upload and processing
-  app.post("/api/upload-pdf", upload.single('pdf'), async (req: any, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: "No PDF file uploaded" });
-      }
 
-      const extractedItems = await extractItemsFromPDF(req.file.buffer);
-      
-      res.json({
-        message: "PDF processed successfully",
-        items: extractedItems,
-        originalFilename: req.file.originalname
-      });
-    } catch (error) {
-      console.error('PDF upload error:', error);
-      res.status(500).json({ message: "Failed to process PDF" });
-    }
-  });
 
   // Email notification - simplified
   app.post("/api/jobs/:id/notify", async (req, res) => {
