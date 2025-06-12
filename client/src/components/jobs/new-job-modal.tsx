@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -45,53 +46,85 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
   const form = useForm<JobFormData>({
     resolver: zodResolver(jobFormSchema),
     defaultValues: {
-      customerId: undefined,
+      customerId: 0,
       priority: "normal",
       status: "not_started",
+      notes: "",
       items: [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }],
     },
   });
 
+  const resetForm = () => {
+    form.reset({
+      customerId: 0,
+      priority: "normal",
+      status: "not_started",
+      notes: "",
+      items: [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }],
+    });
+  };
+
   const createJobMutation = useMutation({
     mutationFn: (data: JobFormData) => {
-      if (!data.customerId) {
+      console.log("Submitting job data:", data);
+      
+      if (!data.customerId || data.customerId === 0) {
         throw new Error("Please select a customer");
       }
       
-      const items = data.items.map(item => ({
-        ...item,
+      const validItems = data.items.filter(item => item.name?.trim() !== "");
+      if (validItems.length === 0) {
+        throw new Error("At least one item is required");
+      }
+      
+      const items = validItems.map(item => ({
+        name: item.name.trim(),
+        quantity: Number(item.quantity) || 1,
         estimatedTimePerItem: parseTimeString(item.estimatedTimePerItem || "0"),
+        material: item.material?.trim() || "",
+        notes: item.notes?.trim() || "",
       }));
       
       const jobData = {
-        customerId: data.customerId,
-        priority: data.priority,
-        status: data.status,
-        dueDate: data.dueDate,
-        notes: data.notes,
+        customerId: Number(data.customerId),
+        priority: data.priority || "normal",
+        status: data.status || "not_started",
+        dueDate: data.dueDate || undefined,
+        notes: data.notes?.trim() || "",
         items
       };
       
+      console.log("Final job data:", jobData);
       return apiRequest("POST", "/api/jobs", jobData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       toast({ title: "Job created successfully" });
+      resetForm();
       onOpenChange(false);
-      form.reset();
     },
     onError: (error: any) => {
       console.error("Job creation error:", error);
-      toast({ title: "Failed to create job", variant: "destructive" });
+      const message = error?.response?.data?.message || error?.message || "Failed to create job";
+      toast({ title: message, variant: "destructive" });
     },
   });
 
   const onSubmit = (data: JobFormData) => {
-    if (!data.customerId) {
+    console.log("Form submitted with data:", data);
+    
+    if (!data.customerId || data.customerId === 0) {
       toast({ title: "Please select a customer", variant: "destructive" });
       return;
     }
+    
+    const validItems = data.items.filter(item => item.name?.trim() !== "");
+    if (validItems.length === 0) {
+      toast({ title: "Please add at least one item", variant: "destructive" });
+      return;
+    }
+    
     createJobMutation.mutate(data);
   };
 
@@ -107,6 +140,13 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
     }
   };
 
+  // Reset form when modal opens
+  useEffect(() => {
+    if (open) {
+      resetForm();
+    }
+  }, [open]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -119,7 +159,12 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
           <div>
             <Label htmlFor="customerId">Customer *</Label>
             <Select 
-              onValueChange={(value) => form.setValue("customerId", parseInt(value))}
+              value={form.watch("customerId")?.toString() || ""}
+              onValueChange={(value) => {
+                const customerId = parseInt(value);
+                form.setValue("customerId", customerId);
+                console.log("Selected customer ID:", customerId);
+              }}
               required
             >
               <SelectTrigger>
@@ -142,7 +187,10 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="priority">Job Priority</Label>
-              <Select onValueChange={(value) => form.setValue("priority", value as any)}>
+              <Select 
+                value={form.watch("priority") || "normal"}
+                onValueChange={(value) => form.setValue("priority", value as any)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Normal" />
                 </SelectTrigger>
@@ -187,6 +235,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
                     <Input
                       type="number"
                       placeholder="Qty"
+                      min="1"
                       {...form.register(`items.${index}.quantity`, { valueAsNumber: true })}
                     />
                   </div>
@@ -232,7 +281,10 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
 
           {/* Form Actions */}
           <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => {
+              resetForm();
+              onOpenChange(false);
+            }}>
               Cancel
             </Button>
             <Button type="submit" disabled={createJobMutation.isPending}>
