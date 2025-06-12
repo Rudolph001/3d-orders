@@ -1,16 +1,16 @@
-
 import React, { useState, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import apiRequest from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Plus, Trash2 } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { insertJobSchema } from "@shared/schema";
 import { z } from "zod";
@@ -38,7 +38,7 @@ interface NewJobModalProps {
 export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
   });
@@ -67,16 +67,16 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
   const createJobMutation = useMutation({
     mutationFn: (data: JobFormData) => {
       console.log("Submitting job data:", data);
-      
+
       if (!data.customerId || data.customerId === 0) {
         throw new Error("Please select a customer");
       }
-      
+
       const validItems = data.items.filter(item => item.name?.trim() !== "");
       if (validItems.length === 0) {
         throw new Error("At least one item is required");
       }
-      
+
       const items = validItems.map(item => ({
         name: item.name.trim(),
         quantity: Number(item.quantity) || 1,
@@ -84,7 +84,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
         material: item.material?.trim() || "",
         notes: item.notes?.trim() || "",
       }));
-      
+
       const jobData = {
         customerId: Number(data.customerId),
         priority: data.priority || "normal",
@@ -93,7 +93,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
         notes: data.notes?.trim() || "",
         items
       };
-      
+
       console.log("Final job data:", jobData);
       return apiRequest("POST", "/api/jobs", jobData);
     },
@@ -113,18 +113,18 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
 
   const onSubmit = (data: JobFormData) => {
     console.log("Form submitted with data:", data);
-    
+
     if (!data.customerId || data.customerId === 0) {
       toast({ title: "Please select a customer", variant: "destructive" });
       return;
     }
-    
+
     const validItems = data.items.filter(item => item.name?.trim() !== "");
     if (validItems.length === 0) {
       toast({ title: "Please add at least one item", variant: "destructive" });
       return;
     }
-    
+
     createJobMutation.mutate(data);
   };
 
@@ -153,7 +153,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
         <DialogHeader>
           <DialogTitle>Create New Job</DialogTitle>
         </DialogHeader>
-        
+
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* Customer Selection */}
           <div>
@@ -225,7 +225,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
                 Add Item
               </Button>
             </div>
-            
+
             <div className="space-y-3">
               {form.watch("items").map((_, index) => (
                 <div key={index} className="grid grid-cols-12 gap-3 items-end">
