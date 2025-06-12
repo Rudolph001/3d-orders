@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { parseTimeString } from "@/lib/utils";
 import type { Customer } from "@shared/schema";
 
 const jobFormSchema = insertJobSchema.extend({
+  customerId: z.number().min(1, "Please select a customer"),
   items: z.array(z.object({
     name: z.string().min(1, "Item name is required"),
     quantity: z.number().min(1, "Quantity must be at least 1"),
@@ -44,7 +45,7 @@ export default function NewJobModal({ open, onOpenChange }: NewJobModalProps) {
   const form = useForm<JobFormData>({
     resolver: zodResolver(jobFormSchema),
     defaultValues: {
-      customerId: 0,
+      customerId: 1,
       priority: "normal",
       status: "not_started",
       items: [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }],
