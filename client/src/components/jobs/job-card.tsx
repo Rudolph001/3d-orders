@@ -192,11 +192,20 @@ export default function JobCard({ job }: JobCardProps) {
         {/* Job Items */}
         <div className="bg-slate-50 rounded-lg p-3 mb-3">
           <h5 className="text-sm font-medium text-slate-700 mb-2">Items:</h5>
-          <div className="space-y-1 text-sm text-slate-600">
+          <div className="space-y-2 text-sm text-slate-600">
             {job.items.map((item) => (
-              <div key={item.id} className="flex justify-between">
-                <span>{item.name}</span>
-                <span>{item.quantity}x • {formatTime(item.estimatedTimePerItem || 0)}</span>
+              <div key={item.id} className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="truncate flex-1 mr-2">{item.name}</span>
+                  <div className="flex items-center space-x-2">
+                    <StatusBadge status={item.status} />
+                    <span className="text-xs">{item.completedQuantity || 0}/{item.quantity}</span>
+                  </div>
+                </div>
+                <Progress 
+                  value={item.quantity > 0 ? ((item.completedQuantity || 0) / item.quantity) * 100 : 0} 
+                  className="h-1" 
+                />
               </div>
             ))}
           </div>

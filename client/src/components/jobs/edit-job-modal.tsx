@@ -6,10 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
-import { Trash2, Plus } from "lucide-react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Edit, Trash2, Plus } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Progress } from "@/components/ui/progress";
+import StatusBadge from "./status-badge";
 import type { JobWithCustomer, Customer } from "@shared/schema";
 
 interface EditJobModalProps {
@@ -150,6 +152,24 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
     },
   });
 
+  const updateItemMutation = useMutation({
+    mutationFn: ({ itemId, data }: { itemId: number; data: any }) =>
+      apiRequest("PUT", `/api/job-items/${itemId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      toast({ title: "Item updated successfully" });
+    },
+    onError: (error: any) => {
+      console.error('Update item error:', error);
+      toast({ 
+        title: "Failed to update item", 
+        description: error.response?.data?.message || "Unknown error",
+        variant: "destructive" 
+      });
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.items.length === 0) {
@@ -186,12 +206,18 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
   };
 
   const updateItem = (index: number, field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.map((item, i) => 
-        i === index ? { ...item, [field]: value } : item
-      )
-    }));
+    const updatedItems = [...formData.items];
+    updatedItems[index] = { ...updatedItems[index], [field]: value };
+    setFormData(prev => ({ ...prev, items: updatedItems }));
+
+    // Immediately update the item on the server
+    const item = updatedItems[index];
+    if (item.id) {
+      updateItemMutation.mutate({
+        itemId: item.id,
+        data: { [field]: value }
+      });
+    }
   };
 
   if (!job) return null;
@@ -283,23 +309,37 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
 
             <div className="space-y-4">
               {formData.items.map((item, index) => (
-                <Card key={index}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <h4 className="font-medium">Item {index + 1}</h4>
-                      {formData.items.length > 1 && (
-                        <Button
-                          type="button"
-                          onClick={() => removeItem(index)}
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
+                <Card key={index} className="border border-slate-200">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <h4 className="font-medium">Item {index + 1}</h4>
+                        <StatusBadge status={item.status} />
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removeItem(index)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
-
+                    {item.quantity > 0 && (
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs text-slate-600 mb-1">
+                          <span>Progress</span>
+                          <span>{Math.round(((item.completedQuantity || 0) / item.quantity) * 100)}%</span>
+                        </div>
+                        <Progress 
+                          value={((item.completedQuantity || 0) / item.quantity) * 100} 
+                          className="h-2" 
+                        />
+                      </div>
+                    )}
+                  </CardHeader>
+                  <CardContent className="p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       <div>
                         <Label>Name *</Label>
