@@ -96,7 +96,7 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
         customerId: data.customerId,
         priority: data.priority,
         status: data.status,
-        dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
+        dueDate: data.dueDate ? new Date(data.dueDate) : null,
         notes: data.notes,
       };
 
