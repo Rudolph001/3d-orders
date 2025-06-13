@@ -21,7 +21,7 @@ interface EditJobModalProps {
 export default function EditJobModal({ open, onOpenChange, job }: EditJobModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const [formData, setFormData] = useState({
     customerId: 0,
     priority: "normal",
@@ -56,10 +56,28 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
     }
   }, [job, open]);
 
+  const parseTimeString = (timeStr: string | number): number => {
+    if (!timeStr || timeStr === "") return 0;
+
+    // If it's already a number, return it
+    if (typeof timeStr === 'number' || !isNaN(Number(timeStr))) {
+      return Number(timeStr);
+    }
+
+    // Parse formats like "2h 30m", "2h", "30m", "150"
+    const hourMatch = String(timeStr).match(/(\d+)h/);
+    const minuteMatch = String(timeStr).match(/(\d+)m/);
+
+    const hours = hourMatch ? parseInt(hourMatch[1]) : 0;
+    const minutes = minuteMatch ? parseInt(minuteMatch[1]) : 0;
+
+    return hours * 60 + minutes;
+  };
+
   const updateJobMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       if (!job) throw new Error("No job to update");
-      
+
       // Update job details
       const jobUpdate = {
         customerId: data.customerId,
@@ -68,29 +86,29 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
         dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
         notes: data.notes,
       };
-      
+
       await apiRequest("PUT", `/api/jobs/${job.id}`, jobUpdate);
-      
+
       // Update job items
       const existingItemIds = job.items.map(item => item.id);
       const updatedItemIds = data.items.filter(item => item.id).map(item => item.id);
-      
+
       // Delete removed items
       const itemsToDelete = existingItemIds.filter(id => !updatedItemIds.includes(id));
       for (const itemId of itemsToDelete) {
         await apiRequest("DELETE", `/api/jobs/${job.id}/items/${itemId}`);
       }
-      
+
       // Update or create items
       for (const item of data.items) {
         const itemData = {
           name: item.name,
           quantity: item.quantity,
-          estimatedTimePerItem: item.estimatedTimePerItem,
+          estimatedTimePerItem: parseTimeString(item.estimatedTimePerItem),
           material: item.material,
           notes: item.notes,
         };
-        
+
         if (item.id) {
           // Update existing item
           await apiRequest("PUT", `/api/jobs/${job.id}/items/${item.id}`, itemData);

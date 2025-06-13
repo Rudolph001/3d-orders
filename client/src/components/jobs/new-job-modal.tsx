@@ -68,7 +68,7 @@ export default function NewJobModal({ open, onOpenChange, importedItems, invoice
     const defaultItems = importedItems && importedItems.length > 0 
       ? importedItems 
       : [{ name: "", quantity: 1, estimatedTimePerItem: "", material: "", notes: "" }];
-    
+
     form.reset({
       customerId: 0,
       priority: "normal",
