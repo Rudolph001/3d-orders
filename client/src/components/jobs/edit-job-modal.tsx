@@ -1,8 +1,5 @@
 import { useState, useEffect } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,17 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, Plus } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { insertJobSchema, insertJobItemSchema } from "@shared/schema";
 import type { JobWithCustomer, Customer } from "@shared/schema";
-
-const editJobSchema = insertJobSchema.extend({
-  items: z.array(insertJobItemSchema.omit({ jobId: true }).extend({
-    id: z.number().optional(),
-    estimatedTimePerItem: z.coerce.number().min(0).default(0),
-  })).min(1, "At least one item is required"),
-});
-
-type EditJobFormData = z.infer<typeof editJobSchema>;
 
 interface EditJobModalProps {
   open: boolean;
@@ -34,51 +21,43 @@ interface EditJobModalProps {
 export default function EditJobModal({ open, onOpenChange, job }: EditJobModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  const [formData, setFormData] = useState({
+    customerId: 0,
+    priority: "normal",
+    status: "not_started",
+    dueDate: "",
+    notes: "",
+    items: [{ id: undefined as number | undefined, name: "", quantity: 1, estimatedTimePerItem: 0, material: "", notes: "" }]
+  });
 
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
   });
 
-  const form = useForm<EditJobFormData>({
-    resolver: zodResolver(editJobSchema),
-    defaultValues: {
-      customerId: 0,
-      priority: "normal",
-      status: "not_started",
-      dueDate: "",
-      items: [{ name: "", quantity: 1, estimatedTimePerItem: 0, material: "", notes: "" }],
-      notes: "",
-    },
-  });
-
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: "items",
-  });
-
   // Reset form when job changes
   useEffect(() => {
     if (job && open) {
-      form.reset({
+      setFormData({
         customerId: job.customerId,
         priority: job.priority,
         status: job.status,
         dueDate: job.dueDate ? new Date(job.dueDate).toISOString().slice(0, 16) : "",
+        notes: job.notes || "",
         items: job.items.map(item => ({
-          id: item.id,
+          id: item.id as number | undefined,
           name: item.name,
           quantity: item.quantity,
           estimatedTimePerItem: item.estimatedTimePerItem || 0,
           material: item.material || "",
           notes: item.notes || "",
         })),
-        notes: job.notes || "",
       });
     }
-  }, [job, open, form]);
+  }, [job, open]);
 
   const updateJobMutation = useMutation({
-    mutationFn: async (data: EditJobFormData) => {
+    mutationFn: async (data: typeof formData) => {
       if (!job) throw new Error("No job to update");
       
       // Update job details
@@ -137,12 +116,38 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
     },
   });
 
-  const onSubmit = (data: EditJobFormData) => {
-    updateJobMutation.mutate(data);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData.items.length === 0) {
+      toast({ title: "At least one item is required", variant: "destructive" });
+      return;
+    }
+    updateJobMutation.mutate(formData);
   };
 
   const addItem = () => {
-    append({ name: "", quantity: 1, estimatedTimePerItem: 0, material: "", notes: "" });
+    setFormData(prev => ({
+      ...prev,
+      items: [...prev.items, { id: undefined, name: "", quantity: 1, estimatedTimePerItem: 0, material: "", notes: "" }]
+    }));
+  };
+
+  const removeItem = (index: number) => {
+    if (formData.items.length > 1) {
+      setFormData(prev => ({
+        ...prev,
+        items: prev.items.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  const updateItem = (index: number, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
   };
 
   if (!job) return null;
@@ -154,14 +159,14 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
           <DialogTitle>Edit Job #{job.jobNumber}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Job Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="customerId">Customer *</Label>
               <Select 
-                value={form.watch("customerId")?.toString() || ""} 
-                onValueChange={(value) => form.setValue("customerId", parseInt(value))}
+                value={formData.customerId.toString()} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, customerId: parseInt(value) }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a customer" />
@@ -174,16 +179,13 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
                   ))}
                 </SelectContent>
               </Select>
-              {form.formState.errors.customerId && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.customerId.message}</p>
-              )}
             </div>
 
             <div>
               <Label htmlFor="priority">Priority</Label>
               <Select 
-                value={form.watch("priority")} 
-                onValueChange={(value) => form.setValue("priority", value as "low" | "normal" | "high" | "urgent")}
+                value={formData.priority} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value }))}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -200,8 +202,8 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
             <div>
               <Label htmlFor="status">Status</Label>
               <Select 
-                value={form.watch("status")} 
-                onValueChange={(value) => form.setValue("status", value as "not_started" | "printing" | "paused" | "completed")}
+                value={formData.status} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -219,7 +221,8 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
               <Label htmlFor="dueDate">Due Date</Label>
               <Input
                 type="datetime-local"
-                {...form.register("dueDate")}
+                value={formData.dueDate}
+                onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
               />
             </div>
           </div>
@@ -235,15 +238,15 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
             </div>
 
             <div className="space-y-4">
-              {fields.map((field, index) => (
-                <Card key={field.id}>
+              {formData.items.map((item, index) => (
+                <Card key={index}>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-3">
                       <h4 className="font-medium">Item {index + 1}</h4>
-                      {fields.length > 1 && (
+                      {formData.items.length > 1 && (
                         <Button
                           type="button"
-                          onClick={() => remove(index)}
+                          onClick={() => removeItem(index)}
                           size="sm"
                           variant="ghost"
                           className="text-red-600 hover:text-red-700"
@@ -255,58 +258,55 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                       <div>
-                        <Label htmlFor={`items.${index}.name`}>Name *</Label>
+                        <Label>Name *</Label>
                         <Input
                           placeholder="Item name"
-                          {...form.register(`items.${index}.name`)}
+                          value={item.name}
+                          onChange={(e) => updateItem(index, 'name', e.target.value)}
+                          required
                         />
-                        {form.formState.errors.items?.[index]?.name && (
-                          <p className="text-sm text-red-600 mt-1">
-                            {form.formState.errors.items[index]?.name?.message}
-                          </p>
-                        )}
                       </div>
 
                       <div>
-                        <Label htmlFor={`items.${index}.quantity`}>Quantity *</Label>
+                        <Label>Quantity *</Label>
                         <Input
                           type="number"
                           min="1"
                           placeholder="1"
-                          {...form.register(`items.${index}.quantity`, { valueAsNumber: true })}
+                          value={item.quantity}
+                          onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                          required
                         />
-                        {form.formState.errors.items?.[index]?.quantity && (
-                          <p className="text-sm text-red-600 mt-1">
-                            {form.formState.errors.items[index]?.quantity?.message}
-                          </p>
-                        )}
                       </div>
 
                       <div>
-                        <Label htmlFor={`items.${index}.estimatedTimePerItem`}>Time per Item (min)</Label>
+                        <Label>Time per Item (min)</Label>
                         <Input
                           type="number"
                           min="0"
                           step="0.1"
                           placeholder="0"
-                          {...form.register(`items.${index}.estimatedTimePerItem`, { valueAsNumber: true })}
+                          value={item.estimatedTimePerItem}
+                          onChange={(e) => updateItem(index, 'estimatedTimePerItem', parseFloat(e.target.value) || 0)}
                         />
                       </div>
 
                       <div>
-                        <Label htmlFor={`items.${index}.material`}>Material</Label>
+                        <Label>Material</Label>
                         <Input
                           placeholder="e.g., PLA, ABS"
-                          {...form.register(`items.${index}.material`)}
+                          value={item.material}
+                          onChange={(e) => updateItem(index, 'material', e.target.value)}
                         />
                       </div>
                     </div>
 
                     <div className="mt-3">
-                      <Label htmlFor={`items.${index}.notes`}>Notes</Label>
+                      <Label>Notes</Label>
                       <Textarea
                         placeholder="Special instructions for this item..."
-                        {...form.register(`items.${index}.notes`)}
+                        value={item.notes}
+                        onChange={(e) => updateItem(index, 'notes', e.target.value)}
                         rows={2}
                       />
                     </div>
@@ -314,10 +314,6 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
                 </Card>
               ))}
             </div>
-
-            {form.formState.errors.items?.root && (
-              <p className="text-sm text-red-600 mt-2">{form.formState.errors.items.root.message}</p>
-            )}
           </div>
 
           {/* Notes */}
@@ -325,7 +321,8 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
             <Label htmlFor="notes">Job Notes</Label>
             <Textarea
               placeholder="Any special instructions or notes for this job..."
-              {...form.register("notes")}
+              value={formData.notes}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
             />
           </div>
 

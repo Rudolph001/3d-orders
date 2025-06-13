@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import StatusBadge from "./status-badge";
+import EditJobModal from "./edit-job-modal";
 import { formatTime } from "@/lib/utils";
 import type { JobWithCustomer } from "@shared/schema";
 
@@ -220,6 +221,12 @@ export default function JobCard({ job }: JobCardProps) {
           </Button>
         </div>
       </CardContent>
+
+      <EditJobModal 
+        open={editingJob} 
+        onOpenChange={setEditingJob}
+        job={job}
+      />
     </Card>
   );
 }
