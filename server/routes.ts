@@ -218,6 +218,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put("/api/jobs/:jobId/items/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const itemData = insertJobItemSchema.partial().parse(req.body);
+      const item = await storage.updateJobItem(id, itemData);
+      if (!item) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid item data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to update item" });
+      }
+    }
+  });
+
+  app.delete("/api/jobs/:jobId/items/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteJobItem(id);
+      if (!success) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete item" });
+    }
+  });
+
   app.put("/api/job-items/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
