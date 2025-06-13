@@ -1,8 +1,9 @@
 import { useState, useCallback } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Upload } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
+import { FileText, Upload, CheckCircle } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 interface ExtractedItem {
@@ -16,8 +17,11 @@ interface PdfUploaderProps {
 
 export default function PdfUploader({ onItemsExtracted }: PdfUploaderProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [dragActive, setDragActive] = useState(false);
   const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([]);
+  const [createdJob, setCreatedJob] = useState<any>(null);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -38,10 +42,16 @@ export default function PdfUploader({ onItemsExtracted }: PdfUploaderProps) {
     },
     onSuccess: (data) => {
       setExtractedItems(data.items);
+      setCreatedJob(data.job);
       onItemsExtracted?.(data.items);
+      
+      // Invalidate jobs cache to refresh the jobs list
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      
       toast({ 
-        title: "PDF processed successfully", 
-        description: `Extracted ${data.items.length} items from ${data.originalFilename}` 
+        title: "Job created successfully!", 
+        description: data.message || `Created job with ${data.items.length} items from ${data.originalFilename}` 
       });
     },
     onError: (error) => {
@@ -140,8 +150,44 @@ export default function PdfUploader({ onItemsExtracted }: PdfUploaderProps) {
         </CardContent>
       </Card>
 
+      {/* Job Created Successfully */}
+      {createdJob && (
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="p-6">
+            <div className="flex items-start space-x-3">
+              <CheckCircle className="w-6 h-6 text-green-600 mt-1" />
+              <div className="flex-1">
+                <h4 className="text-md font-semibold text-green-900 mb-2">
+                  Job Created Successfully!
+                </h4>
+                <p className="text-green-800 mb-4">
+                  Job #{createdJob.jobNumber} has been created with {extractedItems.length} items from your invoice.
+                </p>
+                <div className="flex space-x-3">
+                  <Button 
+                    onClick={() => setLocation("/jobs")}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    View All Jobs
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      setExtractedItems([]);
+                      setCreatedJob(null);
+                    }}
+                  >
+                    Upload Another Invoice
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Extracted Items */}
-      {extractedItems.length > 0 && (
+      {extractedItems.length > 0 && !createdJob && (
         <Card>
           <CardContent className="p-6">
             <h4 className="text-md font-semibold text-slate-900 mb-4">Extracted Items</h4>
@@ -154,7 +200,7 @@ export default function PdfUploader({ onItemsExtracted }: PdfUploaderProps) {
               ))}
             </div>
             <p className="text-sm text-slate-500 mt-4">
-              Review and edit these items when creating a new job.
+              Job will be created automatically with these items.
             </p>
           </CardContent>
         </Card>

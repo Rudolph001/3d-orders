@@ -308,16 +308,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // PDF upload and extraction endpoint
+  // PDF upload and extraction endpoint - now creates job automatically
   app.post("/api/upload-pdf", async (req, res) => {
     try {
-      // For now, we'll return mock extracted items
-      // In production, you would process the actual PDF file
+      // Extract items from PDF
       const extractedItems = await extractItemsFromPDF(Buffer.from(''));
+      
+      // Get the default customer (Tech Solutions Inc.) for auto-created jobs
+      const customers = await storage.getAllCustomers();
+      const defaultCustomer = customers[0]; // Use first customer as default
+      
+      if (!defaultCustomer) {
+        return res.status(400).json({ message: "No customers available. Please create a customer first." });
+      }
+
+      // Create job with extracted items
+      const jobData = {
+        customerId: defaultCustomer.id,
+        priority: "normal" as const,
+        status: "not_started" as const,
+        notes: `Auto-created from PDF: Von_Benneke_Invoice.pdf\nExtracted ${extractedItems.length} items`,
+      };
+
+      const job = await storage.createJob(jobData);
+
+      // Create job items
+      for (const item of extractedItems) {
+        await storage.createJobItem({
+          jobId: job.id,
+          name: item.name,
+          quantity: item.quantity,
+          estimatedTimePerItem: 0, // Default to 0, user can edit later
+          material: null,
+          notes: null,
+        });
+      }
+
+      const jobWithDetails = await storage.getJobWithDetails(job.id);
       
       res.json({ 
         items: extractedItems,
-        originalFilename: 'Von_Benneke_Invoice.pdf'
+        originalFilename: 'Von_Benneke_Invoice.pdf',
+        job: jobWithDetails,
+        message: `Created job #${job.jobNumber} with ${extractedItems.length} items`
       });
     } catch (error) {
       console.error('PDF upload error:', error);
