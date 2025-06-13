@@ -33,6 +33,9 @@ export const jobItems = pgTable("job_items", {
   estimatedTimePerItem: integer("estimated_time_per_item").default(0), // in minutes
   material: text("material"),
   notes: text("notes"),
+  status: text("status").notNull().default("not_started"), // not_started, printing, paused, completed
+  completedQuantity: integer("completed_quantity").default(0),
+  actualTimePerItem: integer("actual_time_per_item"), // in minutes
 });
 
 export const notifications = pgTable("notifications", {
@@ -61,6 +64,9 @@ export const insertJobSchema = createInsertSchema(jobs).omit({
 
 export const insertJobItemSchema = createInsertSchema(jobItems).omit({
   id: true,
+}).extend({
+  status: z.string().default("not_started"),
+  completedQuantity: z.number().default(0),
 });
 
 export const insertNotificationSchema = createInsertSchema(notifications).omit({

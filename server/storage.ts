@@ -245,12 +245,16 @@ export class MemStorage implements IStorage {
       id,
       notes: insertItem.notes ?? null,
       estimatedTimePerItem: insertItem.estimatedTimePerItem ?? null,
-      material: insertItem.material ?? null
+      material: insertItem.material ?? null,
+      status: insertItem.status ?? "not_started",
+      completedQuantity: insertItem.completedQuantity ?? 0,
+      actualTimePerItem: insertItem.actualTimePerItem ?? null
     };
     this.jobItems.set(id, item);
 
-    // Update job total estimated time
+    // Update job total estimated time and progress
     await this.updateJobTotalTime(insertItem.jobId);
+    await this.updateJobProgress(insertItem.jobId);
 
     return item;
   }
@@ -262,8 +266,9 @@ export class MemStorage implements IStorage {
     const updated: JobItem = { ...existing, ...itemUpdate };
     this.jobItems.set(id, updated);
 
-    // Update job total estimated time
+    // Update job total estimated time and progress
     await this.updateJobTotalTime(existing.jobId);
+    await this.updateJobProgress(existing.jobId);
 
     return updated;
   }
@@ -287,6 +292,25 @@ export class MemStorage implements IStorage {
     }, 0);
 
     await this.updateJob(jobId, { totalEstimatedTime: totalTime });
+  }
+
+  private async updateJobProgress(jobId: number): Promise<void> {
+    const items = await this.getJobItems(jobId);
+    
+    const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+    const completedItems = items.reduce((sum, item) => sum + (item.completedQuantity || 0), 0);
+    
+    const progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+    
+    // Update job status based on progress
+    let status = "not_started";
+    if (progress > 0 && progress < 100) {
+      status = "printing";
+    } else if (progress === 100) {
+      status = "completed";
+    }
+    
+    await this.updateJob(jobId, { progress, status });
   }
 
   // Notification methods

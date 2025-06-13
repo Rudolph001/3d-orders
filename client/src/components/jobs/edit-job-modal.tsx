@@ -28,7 +28,17 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
     status: "not_started",
     dueDate: "",
     notes: "",
-    items: [{ id: undefined as number | undefined, name: "", quantity: 1, estimatedTimePerItem: 0, material: "", notes: "" }]
+    items: [{ 
+      id: undefined as number | undefined, 
+      name: "", 
+      quantity: 1, 
+      estimatedTimePerItem: 0, 
+      material: "", 
+      notes: "",
+      status: "not_started",
+      completedQuantity: 0,
+      actualTimePerItem: 0
+    }]
   });
 
   const { data: customers = [] } = useQuery<Customer[]>({
@@ -51,6 +61,9 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
           estimatedTimePerItem: item.estimatedTimePerItem || 0,
           material: item.material || "",
           notes: item.notes || "",
+          status: item.status || "not_started",
+          completedQuantity: item.completedQuantity || 0,
+          actualTimePerItem: item.actualTimePerItem || 0,
         })),
       });
     }
@@ -59,19 +72,19 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
   const parseTimeString = (timeStr: string | number): number => {
     if (!timeStr || timeStr === "") return 0;
 
-    // If it's already a number, return it
+    // If it's already a number, convert to integer (minutes)
     if (typeof timeStr === 'number' || !isNaN(Number(timeStr))) {
-      return Number(timeStr);
+      return Math.round(Number(timeStr));
     }
 
     // Parse formats like "2h 30m", "2h", "30m", "150"
-    const hourMatch = String(timeStr).match(/(\d+)h/);
-    const minuteMatch = String(timeStr).match(/(\d+)m/);
+    const hourMatch = String(timeStr).match(/(\d+(?:\.\d+)?)h/);
+    const minuteMatch = String(timeStr).match(/(\d+(?:\.\d+)?)m/);
 
-    const hours = hourMatch ? parseInt(hourMatch[1]) : 0;
-    const minutes = minuteMatch ? parseInt(minuteMatch[1]) : 0;
+    const hours = hourMatch ? parseFloat(hourMatch[1]) : 0;
+    const minutes = minuteMatch ? parseFloat(minuteMatch[1]) : 0;
 
-    return hours * 60 + minutes;
+    return Math.round(hours * 60 + minutes);
   };
 
   const updateJobMutation = useMutation({
@@ -107,6 +120,9 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
           estimatedTimePerItem: parseTimeString(item.estimatedTimePerItem),
           material: item.material,
           notes: item.notes,
+          status: item.status,
+          completedQuantity: item.completedQuantity,
+          actualTimePerItem: item.actualTimePerItem,
         };
 
         if (item.id) {
@@ -146,7 +162,17 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
   const addItem = () => {
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, { id: undefined, name: "", quantity: 1, estimatedTimePerItem: 0, material: "", notes: "" }]
+      items: [...prev.items, { 
+        id: undefined, 
+        name: "", 
+        quantity: 1, 
+        estimatedTimePerItem: 0, 
+        material: "", 
+        notes: "",
+        status: "not_started",
+        completedQuantity: 0,
+        actualTimePerItem: 0
+      }]
     }));
   };
 
@@ -274,7 +300,7 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       <div>
                         <Label>Name *</Label>
                         <Input
@@ -298,23 +324,53 @@ export default function EditJobModal({ open, onOpenChange, job }: EditJobModalPr
                       </div>
 
                       <div>
-                        <Label>Time per Item (min)</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          placeholder="0"
-                          value={item.estimatedTimePerItem}
-                          onChange={(e) => updateItem(index, 'estimatedTimePerItem', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-
-                      <div>
                         <Label>Material</Label>
                         <Input
                           placeholder="e.g., PLA, ABS"
                           value={item.material}
                           onChange={(e) => updateItem(index, 'material', e.target.value)}
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Status</Label>
+                        <Select 
+                          value={item.status} 
+                          onValueChange={(value) => updateItem(index, 'status', value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="not_started">Not Started</SelectItem>
+                            <SelectItem value="printing">Printing</SelectItem>
+                            <SelectItem value="paused">Paused</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label>Completed Quantity</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max={item.quantity}
+                          placeholder="0"
+                          value={item.completedQuantity}
+                          onChange={(e) => updateItem(index, 'completedQuantity', Math.min(parseInt(e.target.value) || 0, item.quantity))}
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Time per Item (min)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="0"
+                          value={item.estimatedTimePerItem}
+                          onChange={(e) => updateItem(index, 'estimatedTimePerItem', Math.round(parseFloat(e.target.value) || 0))}
                         />
                       </div>
                     </div>
